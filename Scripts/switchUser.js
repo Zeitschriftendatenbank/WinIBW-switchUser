@@ -40,7 +40,7 @@ function initSwitchUser() {
         }
         Users.user[csv.line['USER_WIN'] || csv.line['USER_WEB']] = csv.line['USER_NAME'];
     }, ["USER_WIN", "USER_WEB", "eln", "iln", "USER_NAME"], false, false, false, false);
-    
+
     csv.api();
 
     if (typeof Users === 'object') {
@@ -48,6 +48,14 @@ function initSwitchUser() {
         var iln_cnt = __countProperties(Users.iln);
         var user_cnt = __countProperties(Users.user);
         messageBox('User-Objekt erstellt', 'ELN: ' + eln_cnt + '\nILN: ' + iln_cnt + '\nUser: ' + user_cnt, 'message-icon');
+    }
+
+    var pw = __switchUserGetMaster();
+    if (!pw) {
+        alert("Master-Passwort konnte nicht abgerufen werden. Bitte Master-Passwort ggf. mit Powershell und DPAPI abspeichern:\n$pw = Read-Host \"Passwort\" -AsSecureString\n$encrypted = ConvertFrom-SecureString $pw\n$encrypted | Set-Content C:\\secure\\pw.txt");
+    } else {
+        Users.master = pw;
+        alert("Master-Passwort erfolgreich abgerufen.");
     }
 }
 
@@ -114,9 +122,9 @@ function switchUser() {
         alert('Kein Benutzer ausgewählt.');
         return false;
     }
-    //var newWindow = false;
-    var pwd = getProfileString('switchUser', 'master', '');
-    if (!pwd) {
+
+    var pwd;
+    if (!(pwd = Users.master)) {
         pwd = getProfileString('switchUser', user, '');
         if (!pwd) {
             var thePrompter = utility.newPrompter();
@@ -134,9 +142,31 @@ function switchUser() {
     activeWindow.command('log ' + user + ' ' + pwd, true);
     activeWindow.command('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'));
     activeWindow.command('\\bes ' + getProfileString('cbs', 'bes', '1.12'));
-    if(idn) {
+    if (idn) {
         activeWindow.command('f \\PPN ' + idn);
     }
+}
+
+function __switchUserGetMaster() {
+    var ps1 = "%APPDATA%\\OCLC\\WinIBW4\\user\\getpw.ps1";
+    var shell = new ActiveXObject("WScript.Shell");
+    var cmd = 'powershell -ExecutionPolicy Bypass -File "' + ps1 + '"';
+
+    var exec = shell.Exec(cmd);
+    alert("Master-Passwort wird abgerufen...");
+    while (exec.Status == 0) {
+        var start = new Date().getTime();
+        while (new Date().getTime() - start < 100) {
+            // busy-waiting to pause script execution
+        }
+    }
+    var output = exec.StdOut.ReadAll();
+    var err = exec.StdErr.ReadAll();
+    if (err) {
+        alert("ERROR:" + err);
+        return false;
+    }
+    return output;
 }
 
 function __promptUsers(users) {
