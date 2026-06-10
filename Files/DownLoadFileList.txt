@@ -1,0 +1,2 @@
+source=getpw.ps1, destination=%APPDATA%\OCLC\WinIBW4\user\getpw.ps1
+source=setpw.ps1, destination=%APPDATA%\OCLC\WinIBW4\user\setpw.ps1
