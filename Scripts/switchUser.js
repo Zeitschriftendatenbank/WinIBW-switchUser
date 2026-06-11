@@ -10,14 +10,6 @@ function initSwitchUser() {
     Users.FILENAME = "winibw_users.tsv";
     Users.master = false;
 
-    var countProperties = function (obj) {
-        var count = 0;
-        for (var k in obj) {
-            if (Object.prototype.hasOwnProperty.call(obj, k)) count++;
-        }
-        return count;
-    }
-
     Users.setPw = function (user, pwd) {
         var ps1 = Users.PATH + "setpw.ps1";
         var cmd = 'powershell -ExecutionPolicy Bypass -File "' + ps1 + '" ' + Users.PATH + user + '_pw.txt ' + pwd;
@@ -89,7 +81,7 @@ function initSwitchUser() {
                 return iln = array[1];
             }
         }
-        messageBox('ILN', 'Keine ILN in Kategorie 805 vorhanden.', 'warning-icon');
+        Notify.warning('Keine ILN in Kategorie 805 vorhanden.');
         return false;
     }
 
@@ -97,12 +89,12 @@ function initSwitchUser() {
     var filePath = getProfileString('switchUser', 'file', '');
     if (filePath !== '') {
         if (!tsvFileInput.open(filePath)) {
-            messageBox('TSV-Datei', 'Fehler beim Öffnen der Datei: ' + filePath + '. Bitte wählen Sie die Datei winibw_users.tsv aus, um fortzufahren.', 'error-icon');
+            Notify.error('Fehler beim Öffnen der Datei: ' + filePath + '. Bitte wählen Sie die Datei winibw_users.tsv aus, um fortzufahren.');
             return;
         }
     } else {
         if (!tsvFileInput.openViaGUI('Bitte wählen Sie die Datei winibw_users.tsv aus', Users.PATH, 'winibw_users.tsv', '*.tsv', 'TSV-Dateien')) {
-            messageBox('TSV-Datei', 'Keine Datei ausgewählt. Bitte wählen Sie die Datei winibw_users.tsv aus, um fortzufahren.', 'warning-icon');
+            Notify.warning('Keine Datei ausgewählt. Bitte wählen Sie die Datei winibw_users.tsv aus, um fortzufahren.');
             return;
         }
     }
@@ -147,17 +139,25 @@ function initSwitchUser() {
 
     csv.api();
 
+    var countProperties = function (obj) {
+        var count = 0;
+        for (var k in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, k)) count++;
+        }
+        return count;
+    }
+
     if (typeof Users === 'object') {
         var eln_cnt = countProperties(Users.eln);
         if (eln_cnt === 0) {
-            messageBox('TSV-Datei', 'Warnung: Es wurden keine Benutzer aus der TSV-Datei geladen. Bitte überprüfen Sie die Datei ' + Users.FILENAME + ' im Verzeichnis ' + Users.PATH, 'warning-icon');
+            Notify.warning('Warnung: Es wurden keine Benutzer aus der TSV-Datei geladen. Bitte überprüfen Sie die Datei ' + Users.FILENAME + ' im Verzeichnis ' + Users.PATH);
             return;
         }
         var iln_cnt = countProperties(Users.iln);
         var user_cnt = countProperties(Users.user);
-        messageBox('User-Liste', 'User-Liste aus Datei ' + Users.FILENAME + ' erstellt\nELN: ' + eln_cnt + '\nILN: ' + iln_cnt + '\nUser: ' + user_cnt, 'message-icon');
+        Notify.info('User-Liste aus Datei ' + Users.FILENAME + ' erstellt\nAnzahl ELN: ' + eln_cnt + '\nAnzahl ILN: ' + iln_cnt + '\nAnzahl User: ' + user_cnt);
     }
-    messageBox("Master-Passwort", "Master-Passwort wird abgerufen... Der Vorgang kann einige Sekunden dauern.", 'message-icon');
+    Notify.info("Master-Passwort wird abgerufen... Der Vorgang kann einige Sekunden dauern.");
     var pw = Users.getPw('master');
     if (!pw) {
         var prompter = utility.newPrompter();
@@ -165,14 +165,14 @@ function initSwitchUser() {
         if (prompter.prompt("Master-Passwort", "Master-Passwort konnte nicht abgerufen werden. Möchten Sie es jetzt setzen?", '', '', false)) {
             Users.setPw('master', prompter.getEditValue());
             if (Users.pwd['master']) {
-                messageBox("Master-Passwort", "Master-Passwort erfolgreich gesetzt.", 'message-icon');
+                Notify.info("Master-Passwort erfolgreich gesetzt.");
             } else {
-                messageBox("Master-Passwort", "Master-Passwort konnte nicht gesetzt werden. Bitte überprüfen Sie die Berechtigungen des Verzeichnisses " + Users.PATH, 'error-icon');
+                Notify.error("Master-Passwort konnte nicht gesetzt werden. Bitte überprüfen Sie die Berechtigungen des Verzeichnisses " + Users.PATH);
             }
         }
     } else {
         Users.master = pw;
-        messageBox("Master-Passwort", "Master-Passwort erfolgreich abgerufen.", 'message-icon');
+        Notify.info("Master-Passwort erfolgreich abgerufen.");
     }
 }
 
@@ -204,7 +204,7 @@ function switchUser() {
         } else {
             switch (eln.length) {
                 case 0:
-                    messageBox('Fehler', 'Keine ELN zu ILN ' + iln + ' gefunden.', 'error-icon');
+                    Notify.error('Keine ELN zu ILN ' + iln + ' gefunden.');
                     return false;
                 case 1:
                     users = Users.eln[eln[0]];
@@ -222,7 +222,7 @@ function switchUser() {
 
     var user = Users.promptUsers(users);
     if (!user) {
-        messageBox('Abbruch', 'Kein Benutzer ausgewählt.', 'info-icon');
+        Notify.info('Abbruch', 'Kein Benutzer ausgewählt.');
         return false;
     }
 
@@ -243,10 +243,15 @@ function switchUser() {
         }
     }
     var idn = activeWindow.variable('P3GPP');
-    activeWindow.command('log ' + user + ' ' + pwd, true);
+
+    activeWindow.command('log ' + user + ' ' + pwd, false);
+                alert('IDN1: ' + idn);
     activeWindow.command('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
+                alert('IDN: ' + idn);
     activeWindow.command('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
+                alert('IDN3: ' + idn);
     if (idn) {
+
         activeWindow.command('f \\PPN ' + idn, false);
     }
 }
