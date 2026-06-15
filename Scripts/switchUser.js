@@ -245,14 +245,10 @@ function switchUser() {
     var idn = activeWindow.variable('P3GPP');
 
     activeWindow.command('log ' + user + ' ' + pwd, false);
-                alert('IDN1: ' + idn);
     activeWindow.command('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
-                alert('IDN: ' + idn);
     activeWindow.command('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
-                alert('IDN3: ' + idn);
     if (idn) {
-
-        activeWindow.command('f \\PPN ' + idn, false);
+        activeWindow.command('\\ZOE \\PPN ' + idn, false);
     }
 }
 
