@@ -1,7 +1,77 @@
 var Users;
 
+// Lightweight Users placeholder to allow calling Users.logOn/Users.switchTo
+// before heavy initialization (TSV parsing, master password retrieval).
+if (typeof Users === 'undefined' || Users === null) {
+    Users = {
+        _inited: false,
+        ensureInit: function () {
+            if (!this._inited) {
+                try { initSwitchUser(); } catch (e) { /* init will populate Users */ }
+                this._inited = true;
+            }
+        },
+        logOn: function (user, pwd, newWindow) {
+            this.ensureInit();
+            if (!user) return false;
+            if (typeof pwd === 'undefined' || pwd === null) return false;
+
+            var origWindowId = null;
+            try { origWindowId = activeWindow.windowID; } catch (e) { origWindowId = null; }
+
+            // Issue log command; when newWindow==true the command should open a new window
+            activeWindow.command('log ' + user + ' ' + pwd, !!newWindow);
+            activeWindow.command('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
+            activeWindow.command('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
+            // Wait up to 2s for the activeWindow id to change (heuristic)
+            var start = new Date().getTime();
+            var newId = origWindowId;
+            try {
+                while (new Date().getTime() - start < 2000) {
+                    if (typeof activeWindow !== 'undefined' && activeWindow.windowID !== origWindowId) {
+                        newId = activeWindow.windowID;
+                        break;
+                    }
+                }
+            } catch (e) {
+                // ignore
+            }
+
+            // If we requested a new window but id didn't change, still return current id if login likely succeeded
+            return newId || false;
+        },
+        switchTo: function (user, newWindow) {
+            this.ensureInit();
+            newWindow = !!newWindow || false;
+            if (!user) return false;
+            if (!Users.user[user]) return false; // user not known
+
+            var pwd;
+            if (Users.pwd[user]) {
+                pwd = Users.pwd[user];
+            } else if (Users.pwd['master']) {
+                pwd = Users.pwd['master'];
+            } else {
+                var thePrompter = utility.newPrompter();
+                var ret = thePrompter.prompt('Switch User', 'Passwort nicht gefunden. Bitte Passwort für ' + user + ' eingeben:', '', 'Passwort im Hintergrund speichern?', false);
+                if (!ret) {
+                    return false; // canceled
+                }
+                pwd = thePrompter.getEditValue();
+                if (thePrompter.getCheckValue()) {
+                    Users.setPw(user, pwd);
+                }
+            }
+
+            // Open login in a new window and return its id
+            var winId = Users.logOn(user, pwd, newWindow);
+            return winId;
+        }
+    }
+}
+
 function initSwitchUser() {
-    Users = {};
+    // do not overwrite Users; populate its properties instead
     Users.iln = {};
     Users.eln = {};
     Users.user = {};
@@ -174,12 +244,16 @@ function initSwitchUser() {
         Users.master = pw;
         Notify.info("Master-Passwort erfolgreich abgerufen.");
     }
+    Users._inited = true;
 }
 
 function switchUser() {
+    // Ensure Users is initialized (lazy init)
     if (typeof Users === 'undefined' || Users === null) {
-        initSwitchUser();
+        // recreate placeholder if somehow missing
+        Users = {};
     }
+    if (typeof Users.ensureInit === 'function') Users.ensureInit();
 
     var users = [];
     if ('Tw' !== activeWindow.materialCode) {
@@ -251,4 +325,5 @@ function switchUser() {
         activeWindow.command('\\ZOE \\PPN ' + idn, false);
     }
 }
+
 

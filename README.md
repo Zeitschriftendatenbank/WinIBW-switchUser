@@ -49,6 +49,55 @@ Nebenwirkungen
 - Initialisiert die globale Variable `Users`.
 
 
+## Funktion `Users.switchTo`
+
+Zweck
+- Programmgesteuertes Umschalten auf einen bestimmten Benutzer, falls dieser in der eingelesenen Benutzerliste vorhanden ist.
+
+Signatur
+- `Users.switchTo(user)`
+
+Parameter
+- `user` (string): Benutzerkennung (z. B. `USER_WIN` oder `USER_WEB`).
+
+Verhalten
+- Führt bei Bedarf die Lazy-Initialisierung aus (TSV-Einlesen, Master-Passwort-Abruf) bevor die Operation ausgeführt wird.
+- Prüft, ob der Benutzer in `Users.user` vorhanden ist; falls nicht, gibt die Funktion `false` zurück.
+- Beschafft das Passwort wie in `switchUser()` beschrieben: gespeichertes Passwort, Master-Passwort oder interaktive Abfrage mit Option zum Speichern.
+- Führt das Login in einem neuen Fenster aus (intern wird `Users.logOn(..., newWindow=true)` verwendet) und gibt die Fenster-ID zurück.
+
+Rückgabewert
+- Zahl (Fenster-ID) bei Erfolg.
+- `false` bei Abbruch (z. B. User nicht gefunden oder Nutzer bricht Passwortabfrage ab).
+
+Nebenwirkungen
+- Kann bei Bedarf das Master-Passwort oder individuelle Passwörter im Profil speichern, wenn vom Nutzer bestätigt.
+
+
+## Funktion `Users.logOn`
+
+Zweck
+- Sendet die eigentlichen Login-Befehle an WinIBW4; kann wahlweise in einem neuen Fenster ausgeführt werden.
+
+Signatur
+- `Users.logOn(user, pwd, newWindow)`
+
+Parameter
+- `user` (string): Benutzerkennung.
+- `pwd` (string): Passwort (im Klartext).
+- `newWindow` (boolean): Wenn `true`, wird das Login in einem neuen Fenster versucht; `false` führt das Login im aktuellen Fenster aus.
+
+Verhalten
+- Führt den Befehl `log <user> <pwd>` über `activeWindow.command(...)` aus. Bei `newWindow === true` wird die `inNewWindow`-Flag gesetzt.
+- Versucht (heuristisch) innerhalb kurzer Zeit festzustellen, ob ein neues Fenster erzeugt wurde und gibt dessen Fenster-ID zurück. Falls keine neue ID festgestellt wird, liefert die Funktion die aktuelle Fenster-ID oder `false`.
+
+Rückgabewert
+- Zahl (Fenster-ID) bei Erfolg (eventuell die aktuelle Fenster-ID wenn kein neues Fenster angelegt wurde).
+- `false` bei Fehler.
+
+Hinweis zur Nutzung
+- Beide Funktionen sind als Wrapper so implementiert, dass sie vor der aufwändigen Initialisierung der `Users`-Datenstruktur aufgerufen werden können; die tatsächliche Initialisierung erfolgt beim ersten Bedarf (lazy init).
+
 ## Funktion switchUser
 
 Zweck
