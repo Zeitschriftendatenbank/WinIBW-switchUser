@@ -318,12 +318,18 @@ function switchUser() {
     }
     var idn = activeWindow.variable('P3GPP');
 
-    activeWindow.command('log ' + user + ' ' + pwd, false);
-    activeWindow.command('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
-    activeWindow.command('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
+    activeWindow.command('\\LOG ' + user + ' ' + pwd, false);
+    if(MISC.checkScreen(['FI'])) {
+        activeWindow.command('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
+    }
+    if(MISC.checkScreen(['FS'])) {
+        activeWindow.command('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
+    }
     if (idn) {
         activeWindow.command('\\ZOE \\PPN ' + idn, false);
     }
+
+    
 }
 
 
