@@ -21,10 +21,23 @@ if (typeof Users === 'undefined' || Users === null) {
             var origWindowId = null;
             try { origWindowId = activeWindow.windowID; } catch (e) { origWindowId = null; }
 
-            // Issue log command; when newWindow==true the command should open a new window
+                // Temporarily disable command history to avoid logging passwords
+                var prevShowHistory = null;
+                try {
+                    try { prevShowHistory = getProfileString('prefs', 'showHistoryCommands', 'true'); } catch (e) { prevShowHistory = 'true'; }
+                    try { writeProfileString('prefs', 'showHistoryCommands', 'false'); } catch (e) {}
+
             MISC.wait('log ' + user + ' ' + pwd, !!newWindow);
-            MISC.wait('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
-            MISC.wait('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
+            if (MISC.checkScreen(['SY'])) {
+                MISC.wait('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
+            }
+            if (MISC.checkScreen(['FS'])) {
+                MISC.wait('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
+            }
+                } finally {
+                    // restore preference
+                    try { if (prevShowHistory !== null) writeProfileString('prefs', 'showHistoryCommands', prevShowHistory); } catch (e) {}
+                }
             // Wait up to 2s for the activeWindow id to change (heuristic)
             var start = new Date().getTime();
             var newId = origWindowId;
@@ -84,17 +97,17 @@ function initSwitchUser() {
             try {
                 if (typeof Notify !== 'undefined' && typeof Notify.error === 'function') {
                     Notify.error(msg);
-                } else if (typeof application !== 'undefined' && typeof application.messageBox === 'function') {
+                } else {
                     application.messageBox('Fehler', msg, 'error-icon');
                 }
-            } catch (e) {}
+            } catch (e) { }
             return false;
         }
         return true;
     }
 
     if (!ensureDependencies()) return;
-    
+
 
     // do not overwrite Users; populate its properties instead
     Users.iln = {};
@@ -344,12 +357,12 @@ function switchUser() {
     var idn = activeWindow.variable('P3GPP');
 
     MISC.wait('\\LOG ' + user + ' ' + pwd);
-        // activeWindow.command('\\LOG ' + user + ' ' + pwd, false);
-    if(MISC.checkScreen(['FI'])) {
+    // activeWindow.command('\\LOG ' + user + ' ' + pwd, false);
+    if (MISC.checkScreen(['SY'])) {
         MISC.wait('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
         //activeWindow.command('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
     }
-    if(MISC.checkScreen(['FS'])) {
+    if (MISC.checkScreen(['FS'])) {
         MISC.wait('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
         //activeWindow.command('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
     }
@@ -358,7 +371,7 @@ function switchUser() {
         //activeWindow.command('\\ZOE \\PPN ' + idn, false);
     }
 
-    
+
 }
 
 
