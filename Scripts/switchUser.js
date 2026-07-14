@@ -1,5 +1,7 @@
 var Users;
-
+var CSV;
+var MISC;
+var Notify;
 // Lightweight Users placeholder to allow calling Users.logOn/Users.switchTo
 // before heavy initialization (TSV parsing, master password retrieval).
 if (typeof Users === 'undefined' || Users === null) {
@@ -20,9 +22,9 @@ if (typeof Users === 'undefined' || Users === null) {
             try { origWindowId = activeWindow.windowID; } catch (e) { origWindowId = null; }
 
             // Issue log command; when newWindow==true the command should open a new window
-            activeWindow.command('log ' + user + ' ' + pwd, !!newWindow);
-            activeWindow.command('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
-            activeWindow.command('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
+            MISC.wait('log ' + user + ' ' + pwd, !!newWindow);
+            MISC.wait('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
+            MISC.wait('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
             // Wait up to 2s for the activeWindow id to change (heuristic)
             var start = new Date().getTime();
             var newId = origWindowId;
@@ -71,6 +73,29 @@ if (typeof Users === 'undefined' || Users === null) {
 }
 
 function initSwitchUser() {
+    // Ensure required global objects are present
+    function ensureDependencies() {
+        var missing = [];
+        try { if (!CSV) missing.push('CSV'); } catch (e) { missing.push('CSV'); }
+        try { if (!MISC) missing.push('MISC'); } catch (e) { missing.push('MISC'); }
+        try { if (!Notify) missing.push('Notify'); } catch (e) { missing.push('Notify'); }
+        if (missing.length > 0) {
+            var msg = 'Fehler: Fehlende Objekte: ' + missing.join(', ');
+            try {
+                if (typeof Notify !== 'undefined' && typeof Notify.error === 'function') {
+                    Notify.error(msg);
+                } else if (typeof application !== 'undefined' && typeof application.messageBox === 'function') {
+                    application.messageBox('Fehler', msg, 'error-icon');
+                }
+            } catch (e) {}
+            return false;
+        }
+        return true;
+    }
+
+    if (!ensureDependencies()) return;
+    
+
     // do not overwrite Users; populate its properties instead
     Users.iln = {};
     Users.eln = {};
@@ -318,15 +343,19 @@ function switchUser() {
     }
     var idn = activeWindow.variable('P3GPP');
 
-    activeWindow.command('\\LOG ' + user + ' ' + pwd, false);
+    MISC.wait('\\LOG ' + user + ' ' + pwd);
+        // activeWindow.command('\\LOG ' + user + ' ' + pwd, false);
     if(MISC.checkScreen(['FI'])) {
-        activeWindow.command('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
+        MISC.wait('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
+        //activeWindow.command('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
     }
     if(MISC.checkScreen(['FS'])) {
-        activeWindow.command('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
+        MISC.wait('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
+        //activeWindow.command('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
     }
     if (idn) {
-        activeWindow.command('\\ZOE \\PPN ' + idn, false);
+        MISC.wait('\\ZOE \\PPN ' + idn, false);
+        //activeWindow.command('\\ZOE \\PPN ' + idn, false);
     }
 
     
