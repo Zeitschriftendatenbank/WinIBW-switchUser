@@ -18,48 +18,61 @@ if (typeof Users === 'undefined' || Users === null) {
             if (!user) return false;
             if (typeof pwd === 'undefined' || pwd === null) return false;
 
-            var origWindowId = null;
-            try { origWindowId = activeWindow.windowID; } catch (e) { origWindowId = null; }
-
-                // Temporarily disable command history to avoid logging passwords
-                var prevShowHistory = null;
-                try {
-                    try { prevShowHistory = getProfileString('prefs', 'showHistoryCommands', 'true'); } catch (e) { prevShowHistory = 'true'; }
-                    try { writeProfileString('prefs', 'showHistoryCommands', 'false'); } catch (e) {}
-
-            MISC.wait('log ' + user + ' ' + pwd, !!newWindow);
-            if (MISC.checkScreen(['SY'])) {
-                MISC.wait('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
-            }
-            if (MISC.checkScreen(['FS'])) {
-                MISC.wait('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
-            }
-                } finally {
-                    // restore preference
-                    try { if (prevShowHistory !== null) writeProfileString('prefs', 'showHistoryCommands', prevShowHistory); } catch (e) {}
-                }
-            // Wait up to 2s for the activeWindow id to change (heuristic)
-            var start = new Date().getTime();
-            var newId = origWindowId;
+            // If already logged in as requested user, no-op and return true (popup 0s)
             try {
-                while (new Date().getTime() - start < 2000) {
-                    if (typeof activeWindow !== 'undefined' && activeWindow.windowID !== origWindowId) {
-                        newId = activeWindow.windowID;
-                        break;
-                    }
+                var cur = '';
+                try { cur = activeWindow.getVariable('P3GUK') || ''; } catch (e) { cur = ''; }
+                if (cur === user) {
+                    try { Notify.popup(user + ' bereits angemeldet.', 'Switch User', 'message-icon', 0); } catch (e) { }
+                    return true;
                 }
-            } catch (e) {
-                // ignore
-            }
+            } catch (e) { }
 
-            // If we requested a new window but id didn't change, still return current id if login likely succeeded
-            return newId || false;
+            // Temporarily disable command history to avoid logging passwords
+            var prevShowHistory = null;
+            try {
+                try { prevShowHistory = getProfileString('prefs', 'showHistoryCommands', 'true'); } catch (e) { prevShowHistory = 'true'; }
+                try { writeProfileString('prefs', 'showHistoryCommands', 'false'); } catch (e) { }
+
+                // send login command
+                MISC.wait('log ' + user + ' ' + pwd, !!newWindow);
+                if (MISC.checkScreen(['SY'])) {
+                    MISC.wait('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
+                }
+                if (MISC.checkScreen(['FS'])) {
+                    MISC.wait('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
+                }
+
+                // After attempting login, poll P3GUK for up to 3s to confirm switch
+                var start = new Date().getTime();
+                var success = false;
+                while (new Date().getTime() - start < 3000) {
+                    try {
+                        var val = activeWindow.getVariable('P3GUK') || '';
+                        if (val === user) {
+                            success = true;
+                            break;
+                        }
+                    } catch (e) { }
+                    // short delay (~100ms)
+                    var s = new Date().getTime();
+                    while (new Date().getTime() - s < 100) { }
+                }
+                return success;
+            } finally {
+                // restore preference
+                try { if (prevShowHistory !== null) writeProfileString('prefs', 'showHistoryCommands', prevShowHistory); } catch (e) { }
+            }
         },
+
         switchTo: function (user, newWindow) {
             this.ensureInit();
             newWindow = !!newWindow || false;
             if (!user) return false;
-            if (!Users.user[user]) return false; // user not known
+            if (!Users.user[user]) {
+                Notify.popup('Benutzer ' + user + ' ist nicht bekannt.', 'Switch User', 'warning-icon', 5);
+                return false;
+            } // user not known
 
             var pwd;
             if (Users.pwd[user]) {
@@ -114,7 +127,7 @@ function initSwitchUser() {
     Users.eln = {};
     Users.user = {};
     Users.pwd = {};
-    Users.PATH = "%APPDATA%\\OCLC\\WinIBW4\\user\\";
+    Users.PATH = getSpecialPath("ProfD", "\\user\\");
     Users.FILENAME = "winibw_users.tsv";
     Users.master = false;
 
@@ -133,11 +146,22 @@ function initSwitchUser() {
         if (Users.pwd[user]) {
             return Users.pwd[user];
         }
-        var ps1 = Users.PATH + "getpw.ps1";
-        var cmd = 'powershell -ExecutionPolicy Bypass -File "' + ps1 + '" ' + Users.PATH + user + '_pw.txt';
-        var pwd = Users.shell(cmd);
-        Users.pwd[user] = pwd;
-        return pwd;
+
+        var pw = '';
+        var theFileInput = utility.newFileInput();
+        if (theFileInput.openSpecial('ProfD', '\\user\\' + user + '_pw.txt', false)) {
+            var ps1 = Users.PATH + "getpw.ps1";
+            var cmd = 'powershell -ExecutionPolicy Bypass -File "' + ps1 + '" ' + Users.PATH + user + '_pw.txt';
+            pw = Users.shell(cmd);
+        } else if ('master' !== user) {
+            pw = Users.getPw('master');
+        }
+        if (pw) {
+            Users.pwd[user] = pw;
+            return pw;
+        }
+        Notify.popup('Passwort für Benutzer ' + user + ' konnte nicht abgerufen werden.', 'Switch User', 'error-icon', 0);
+        return false;
     }
 
     Users.shell = function (cmd) {
@@ -156,6 +180,12 @@ function initSwitchUser() {
             return false;
         }
         return output;
+    }
+
+    Users.promptPassword = function (user) {
+        var thePrompter = utility.newPrompter();
+        var ret = thePrompter.prompt('Switch User', 'Passwort nicht gefunden. Bitte Passwort für ' + user + ' eingeben:', '', 'Passwort im Hintergrund speichern?', false);
+        return thePrompter.getEditValue();
     }
 
     Users.promptUsers = function (users) {
@@ -275,15 +305,11 @@ function initSwitchUser() {
     Notify.info("Master-Passwort wird abgerufen... Der Vorgang kann einige Sekunden dauern.");
     var pw = Users.getPw('master');
     if (!pw) {
-        var prompter = utility.newPrompter();
-        //if (prompter.confirm("Master-Passwort", "Master-Passwort konnte nicht abgerufen werden. Möchten Sie es jetzt setzen?")) {
-        if (prompter.prompt("Master-Passwort", "Master-Passwort konnte nicht abgerufen werden. Möchten Sie es jetzt setzen?", '', '', false)) {
-            Users.setPw('master', prompter.getEditValue());
-            if (Users.pwd['master']) {
-                Notify.info("Master-Passwort erfolgreich gesetzt.");
-            } else {
-                Notify.error("Master-Passwort konnte nicht gesetzt werden. Bitte überprüfen Sie die Berechtigungen des Verzeichnisses " + Users.PATH);
-            }
+        Users.setPw('master', Users.promptPassword('master'));
+        if (Users.pwd['master']) {
+            Notify.info("Master-Passwort erfolgreich gesetzt.");
+        } else {
+            Notify.error("Master-Passwort konnte nicht gesetzt werden. Bitte überprüfen Sie die Berechtigungen des Verzeichnisses " + Users.PATH);
         }
     } else {
         Users.master = pw;
@@ -345,12 +371,8 @@ function switchUser() {
         return false;
     }
 
-    var pwd;
-    if (Users.pwd[user]) {
-        pwd = Users.pwd[user];
-    } else if (Users.pwd['master']) {
-        pwd = Users.pwd['master'];
-    } else {
+    var pwd = Users.getPw(user);
+    if (!pwd) {
         var thePrompter = utility.newPrompter();
         var ret = thePrompter.prompt('Switch User', 'Passwort nicht gefunden. Bitte Passwort für ' + user + ' eingeben:', '', 'Passwort im Hintergrund speichern?', false);
         if (!ret) {
@@ -363,22 +385,11 @@ function switchUser() {
     }
     var idn = activeWindow.variable('P3GPP');
 
-    MISC.wait('\\LOG ' + user + ' ' + pwd);
-    // activeWindow.command('\\LOG ' + user + ' ' + pwd, false);
-    if (MISC.checkScreen(['SY'])) {
-        MISC.wait('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
-        //activeWindow.command('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
-    }
-    if (MISC.checkScreen(['FS'])) {
-        MISC.wait('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
-        //activeWindow.command('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
-    }
+    Users.logOn(user, pwd, false);
     if (idn) {
         MISC.wait('\\ZOE \\PPN ' + idn, false);
         //activeWindow.command('\\ZOE \\PPN ' + idn, false);
     }
-
-
 }
 
 

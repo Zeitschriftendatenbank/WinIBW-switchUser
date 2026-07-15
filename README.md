@@ -1,6 +1,10 @@
 # SwitchUser
-## Kurzbeschreibung
-- Sammlung von Hilfsskripten zur Verwaltung von Benutzerwechseln und zugehörigen Aufgaben innerhalb der WinIBW4-Umgebung.
+
+Mit switchUser kann man leicht von einem User zum anderen wechseln, ohne das Passwort parat zu haben. Eine im Hintergrund eingelesene Tabelle dient switchUser als Datenbasis für das Log On.
+
+
+
+Sammlung von Hilfsskripten zur Verwaltung von Benutzerwechseln und zugehörigen Aufgaben innerhalb der WinIBW4-Umgebung.
 
 Inhalt des Ordners
 - `Scripts/` — Hauptskripte, z. B. `switchUser.js` (Hauptlogik) und Hilfsdateien.
