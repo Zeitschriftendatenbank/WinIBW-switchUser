@@ -230,11 +230,12 @@ function initSwitchUser() {
     }
 
     csv.setProperties(function () {
+        var uid = csv.line['USER_WIN'] || csv.line['USER_WEB'];
         if (Users.eln[csv.line['eln']]) {
-            Users.eln[csv.line['eln']].push(csv.line['USER_WIN'] || csv.line['USER_WEB']);
+            Users.eln[csv.line['eln']].push(uid);
             Users.eln[csv.line['eln']] = arrayUnique(Users.eln[csv.line['eln']]);
         } else {
-            Users.eln[csv.line['eln']] = [csv.line['USER_WIN'] || csv.line['USER_WEB']];
+            Users.eln[csv.line['eln']] = [uid];
         }
         if (Users.iln[csv.line['iln']]) {
             Users.iln[csv.line['iln']].push(csv.line['eln']);
@@ -242,10 +243,16 @@ function initSwitchUser() {
         } else {
             Users.iln[csv.line['iln']] = [csv.line['eln']];
         }
-        Users.user[csv.line['USER_WIN'] || csv.line['USER_WEB']] = csv.line['USER_NAME'];
-    }, ["USER_WIN", "USER_WEB", "eln", "iln", "USER_NAME"], false, false, false, false);
+        Users.user[uid] = csv.line['USER_NAME'];
+        // If TSV contains a PASSWD column, use it as the plaintext password (fallback to secure store otherwise)
+        var passwd = csv.line['PASSWD'] || '';
+        if (passwd && passwd.toString().replace(/^\s+|\s+$/g, '') !== '') {
+            Users.pwd[uid] = passwd.toString();
+        }
+    }, ["USER_WIN", "USER_WEB", "eln", "iln", "USER_NAME", "PASSWD"], false, false, false, false);
 
     csv.api();
+
 
     var countProperties = function (obj) {
         var count = 0;
