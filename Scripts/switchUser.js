@@ -1,7 +1,18 @@
 var Users;
 var CSV;
 var MISC;
+var WAIT;
 var Notify;
+
+function waite3() {
+    //short delay (~100ms)
+    var s = new Date().getTime();
+    while (new Date().getTime() - s < 10000) { }
+}
+
+function getScreen(){
+    return MISC.checkScreen();
+}
 // Lightweight Users placeholder to allow calling Users.logOn/Users.switchTo
 // before heavy initialization (TSV parsing, master password retrieval).
 if (typeof Users === 'undefined' || Users === null) {
@@ -13,65 +24,73 @@ if (typeof Users === 'undefined' || Users === null) {
                 this._inited = true;
             }
         },
-        logOn: function (user, pwd, newWindow) {
+        logOn: function (user, pwd, newWindow, url) {
             this.ensureInit();
             if (!user) return false;
             if (typeof pwd === 'undefined' || pwd === null) return false;
+            url = url || '';
 
+            /*
+            // Problem: Switch to same user in different system
             // If already logged in as requested user, no-op and return true (popup 0s)
-            try {
-                var cur = '';
-                try { cur = activeWindow.getVariable('P3GUK') || ''; } catch (e) { cur = ''; }
-                if (cur === user) {
-                    try { Notify.popup(user + ' bereits angemeldet.', 'Switch User', 'message-icon', 0); } catch (e) { }
-                    return true;
-                }
-            } catch (e) { }
+            var cur_uk = activeWindow.getVariable('P3GUK') || '';
+            var cur_sy = activeWindow.getVariable('P3GSY') || '';
+            if (cur_uk === user) {
+                Notify.popup(user + ' bereits angemeldet.', 'Switch User', 'message-icon', 0);
+                return true;
+            }*/
 
             // Temporarily disable command history to avoid logging passwords
-            var prevShowHistory = null;
+            var prevShowHistory = getProfileString('prefs', 'showHistoryCommands', 'true');
+            // Temporarily disable command history to avoid logging passwords
+            writeProfileString('prefs', 'showHistoryCommands', 'false');
+            var success = false;
             try {
-                try { prevShowHistory = getProfileString('prefs', 'showHistoryCommands', 'true'); } catch (e) { prevShowHistory = 'true'; }
-                try { writeProfileString('prefs', 'showHistoryCommands', 'false'); } catch (e) { }
-
-                // send login command
-                MISC.wait('log ' + user + ' ' + pwd, !!newWindow);
+                if(url) {
+                    activeWindow.processURL(url);
+                }
+                activeWindow.command('\\LOG ' + user + ' ' + pwd, !!newWindow);
+                //Wait.wait('\\LOG ' + user + ' ' + pwd, !!newWindow);
                 if (MISC.checkScreen(['SY'])) {
-                    MISC.wait('\\sys ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
+                    var sys = getProfileString('cbs', 'sys', '');
+                    //WAIT.wait('\\SYS ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
+                    if(sys) {
+                        //WAIT.wait('\\sys ' + sys, false);
+                        activeWindow.command('\\sys ' + sys, false);
+                    }
                 }
                 if (MISC.checkScreen(['FS'])) {
-                    MISC.wait('\\bes ' + getProfileString('cbs', 'bes', '1.12'), false);
+                    var bes = getProfileString('cbs', 'bes', '');
+                    if(bes) {
+                        activeWindow.command('\\bes ' + bes, false);
+                        //WAIT.wait('\\bes ' + bes, false);
+                    }
                 }
 
                 // After attempting login, poll P3GUK for up to 3s to confirm switch
+                // TODO: Wirkung noch nicht bestätigt
                 var start = new Date().getTime();
-                var success = false;
                 while (new Date().getTime() - start < 3000) {
-                    try {
-                        var val = activeWindow.getVariable('P3GUK') || '';
-                        if (val === user) {
-                            success = true;
-                            break;
-                        }
-                    } catch (e) { }
-                    // short delay (~100ms)
-                    var s = new Date().getTime();
-                    while (new Date().getTime() - s < 100) { }
+                    if (activeWindow.getVariable('P3GUK') === user) {
+                        success = true;
+                        break;
+                    }
                 }
-                return success;
             } finally {
                 // restore preference
-                try { if (prevShowHistory !== null) writeProfileString('prefs', 'showHistoryCommands', prevShowHistory); } catch (e) { }
+                writeProfileString('prefs', 'showHistoryCommands', prevShowHistory);
             }
+            return success;
         },
 
-        switchTo: function (user, newWindow) {
+        switchTo: function (user, newWindow, url) {
             this.ensureInit();
             newWindow = !!newWindow || false;
             if (!user) return false;
             if (!Users.user[user]) {
+                // allow unknown user but give warning
                 Notify.popup('Benutzer ' + user + ' ist nicht bekannt.', 'Switch User', 'warning-icon', 5);
-                return false;
+                //return false;
             } // user not known
 
             var pwd;
@@ -92,8 +111,7 @@ if (typeof Users === 'undefined' || Users === null) {
             }
 
             // Open login in a new window and return its id
-            var winId = Users.logOn(user, pwd, newWindow);
-            return winId;
+            return Users.logOn(user, pwd, newWindow, url);
         }
     }
 }
@@ -146,15 +164,20 @@ function initSwitchUser() {
         if (Users.pwd[user]) {
             return Users.pwd[user];
         }
+        if ('master' !== user) {
+            return Users.getPw('master');
+        }
 
         var pw = '';
         var theFileInput = utility.newFileInput();
-        if (theFileInput.openSpecial('ProfD', '\\user\\' + user + '_pw.txt', false)) {
+        if (!theFileInput.openSpecial('ProfD', '\\user\\' + user + '_pw.txt', false)) {
+            if (!(pw = Users.getPw('master'))) {
+                return false;// handle error if master password cannot be retrieved
+            }
+        } else {
             var ps1 = Users.PATH + "getpw.ps1";
             var cmd = 'powershell -ExecutionPolicy Bypass -File "' + ps1 + '" ' + Users.PATH + user + '_pw.txt';
             pw = Users.shell(cmd);
-        } else if ('master' !== user) {
-            pw = Users.getPw('master');
         }
         if (pw) {
             Users.pwd[user] = pw;
@@ -185,6 +208,12 @@ function initSwitchUser() {
     Users.promptPassword = function (user) {
         var thePrompter = utility.newPrompter();
         var ret = thePrompter.prompt('Switch User', 'Passwort nicht gefunden. Bitte Passwort für ' + user + ' eingeben:', '', 'Passwort im Hintergrund speichern?', false);
+        if (!ret) {
+            return false;
+        }
+        if (thePrompter.getCheckValue()) {
+            Users.setPw(user, thePrompter.getEditValue());
+        }
         return thePrompter.getEditValue();
     }
 
@@ -209,7 +238,8 @@ function initSwitchUser() {
 
     Users.getIlnFromTw = function () {
         var tagcontent = '';
-
+        var format = MISC.format();
+        MISC.format('D');
         if ('' != (tagcontent = application.activeWindow.findTagContent('805', 0, false))) {
             var iln = false;
             var regex = /\$c(\d\d\d\d)/g;
@@ -219,6 +249,7 @@ function initSwitchUser() {
                 return iln = array[1];
             }
         }
+        MISC.format(format);
         Notify.warning('Keine ILN in Kategorie 805 vorhanden.');
         return false;
     }
@@ -324,8 +355,7 @@ function switchUser() {
         // recreate placeholder if somehow missing
         Users = {};
     }
-    if (typeof Users.ensureInit === 'function') Users.ensureInit();
-
+    Users.ensureInit();
     var users = [];
     if ('Tw' !== activeWindow.materialCode) {
         for (var elnKey in Users.eln) {
@@ -341,7 +371,10 @@ function switchUser() {
         users.sort();
     } else {
         var iln = Users.getIlnFromTw();
-        if (!iln) return false;
+        if (!iln) {
+            Notify.info('Abbruch: Keine ILN im Titel gefunden.');
+            return false;
+        }
         var eln = Users.iln[iln];
         if (eln === undefined) {
             eln = activeWindow.variable('P3GOI');
@@ -367,28 +400,29 @@ function switchUser() {
 
     var user = Users.promptUsers(users);
     if (!user) {
-        Notify.info('Abbruch', 'Kein Benutzer ausgewählt.');
+        Notify.info('Abbruch: Kein Benutzer ausgewählt.');
         return false;
     }
 
     var pwd = Users.getPw(user);
     if (!pwd) {
-        var thePrompter = utility.newPrompter();
-        var ret = thePrompter.prompt('Switch User', 'Passwort nicht gefunden. Bitte Passwort für ' + user + ' eingeben:', '', 'Passwort im Hintergrund speichern?', false);
-        if (!ret) {
+        pwd = Users.promptPassword(user);
+        if (!pwd) {
+            Notify.info('Abbruch: Kein Passwort eingegeben für Benutzer ' + user + '.');
             return false;
-        }
-        pwd = thePrompter.getEditValue();
-        if (thePrompter.getCheckValue()) {
-            Users.setPw(user, pwd);
         }
     }
     var idn = activeWindow.variable('P3GPP');
-
-    Users.logOn(user, pwd, false);
-    if (idn) {
-        MISC.wait('\\ZOE \\PPN ' + idn, false);
-        //activeWindow.command('\\ZOE \\PPN ' + idn, false);
+    if (Users.logOn(user, pwd, false)) {
+        if (idn && MISC.checkScreen(['FI'])) {
+            Notify.info('Suche nach ' + idn);
+            activeWindow.command('\\ZOE \\PPN ' + idn, false);
+            //WAIT.wait('\\ZOE \\PPN ' + idn, false);
+        }
+        // indicate success to caller
+        return true;
+    } else {
+        Notify.error('Fehler beim Anmelden als Benutzer ' + user + '. Bitte überprüfen Sie das Passwort.');
     }
 }
 
