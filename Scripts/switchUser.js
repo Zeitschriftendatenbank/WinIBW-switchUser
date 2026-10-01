@@ -1,7 +1,6 @@
 var Users;
 var CSV;
 var MISC;
-var WAIT;
 var Notify;
 
 function waite3() {
@@ -10,9 +9,6 @@ function waite3() {
     while (new Date().getTime() - s < 10000) { }
 }
 
-function getScreen(){
-    return MISC.checkScreen();
-}
 // Lightweight Users placeholder to allow calling Users.logOn/Users.switchTo
 // before heavy initialization (TSV parsing, master password retrieval).
 if (typeof Users === 'undefined' || Users === null) {
@@ -46,7 +42,7 @@ if (typeof Users === 'undefined' || Users === null) {
             writeProfileString('prefs', 'showHistoryCommands', 'false');
             var success = false;
             try {
-                if(url) {
+                if (url) {
                     activeWindow.processURL(url);
                 }
                 activeWindow.command('\\LOG ' + user + ' ' + pwd, !!newWindow);
@@ -54,14 +50,14 @@ if (typeof Users === 'undefined' || Users === null) {
                 if (MISC.checkScreen(['SY'])) {
                     var sys = getProfileString('cbs', 'sys', '');
                     //WAIT.wait('\\SYS ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
-                    if(sys) {
+                    if (sys) {
                         //WAIT.wait('\\sys ' + sys, false);
                         activeWindow.command('\\sys ' + sys, false);
                     }
                 }
                 if (MISC.checkScreen(['FS'])) {
                     var bes = getProfileString('cbs', 'bes', '');
-                    if(bes) {
+                    if (bes) {
                         activeWindow.command('\\bes ' + bes, false);
                         //WAIT.wait('\\bes ' + bes, false);
                     }
@@ -151,7 +147,7 @@ function initSwitchUser() {
 
     Users.setPw = function (user, pwd) {
         var ps1 = Users.PATH + "setpw.ps1";
-        var cmd = 'powershell -ExecutionPolicy Bypass -File "' + ps1 + '" ' + Users.PATH + user + '_pw.txt ' + pwd;
+        var cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + ps1 + '" ' + Users.PATH + user + '_pw.txt ' + pwd;
         var result = Users.shell(cmd);
         if (!result) {
             return false;
@@ -176,7 +172,7 @@ function initSwitchUser() {
             }
         } else {
             var ps1 = Users.PATH + "getpw.ps1";
-            var cmd = 'powershell -ExecutionPolicy Bypass -File "' + ps1 + '" ' + Users.PATH + user + '_pw.txt';
+            var cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + ps1 + '" ' + Users.PATH + user + '_pw.txt';
             pw = Users.shell(cmd);
         }
         if (pw) {
@@ -192,8 +188,7 @@ function initSwitchUser() {
         var exec = shell.Exec(cmd);
         while (exec.Status == 0) {
             var start = new Date().getTime();
-            while (new Date().getTime() - start < 100) {
-                // busy-waiting to pause script execution
+            while (new Date().getTime() - start < 10) {
             }
         }
         var output = exec.StdOut.ReadAll();
