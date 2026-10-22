@@ -2,12 +2,7 @@ var Users;
 var CSV;
 var MISC;
 var Notify;
-
-function waite3() {
-    //short delay (~100ms)
-    var s = new Date().getTime();
-    while (new Date().getTime() - s < 10000) { }
-}
+var FILE;
 
 // Lightweight Users placeholder to allow calling Users.logOn/Users.switchTo
 // before heavy initialization (TSV parsing, master password retrieval).
@@ -46,7 +41,6 @@ if (typeof Users === 'undefined' || Users === null) {
                     activeWindow.processURL(url);
                 }
                 activeWindow.command('\\LOG ' + user + ' ' + pwd, !!newWindow);
-                //Wait.wait('\\LOG ' + user + ' ' + pwd, !!newWindow);
                 if (MISC.checkScreen(['SY'])) {
                     var sys = getProfileString('cbs', 'sys', '');
                     //WAIT.wait('\\SYS ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
@@ -85,8 +79,7 @@ if (typeof Users === 'undefined' || Users === null) {
             if (!user) return false;
             if (!Users.user[user]) {
                 // allow unknown user but give warning
-                Notify.popup('Benutzer ' + user + ' ist nicht bekannt.', 'Switch User', 'warning-icon', 5);
-                //return false;
+                Notify.popup('Benutzer ' + user + ' ist nicht bekannt.', 'Switch User', 'warning', 5);
             } // user not known
 
             var pwd;
@@ -96,7 +89,7 @@ if (typeof Users === 'undefined' || Users === null) {
                 pwd = Users.pwd['master'];
             } else {
                 var thePrompter = utility.newPrompter();
-                var ret = thePrompter.prompt('Switch User', 'Passwort nicht gefunden. Bitte Passwort für ' + user + ' eingeben:', '', 'Passwort im Hintergrund speichern?', false);
+                var ret = thePrompter.prompt('Switch User', 'Passwort nicht gefunden. Bitte Passwort für ' + user + ' eingeben:', '', 'Passwort speichern?', false);
                 if (!ret) {
                     return false; // canceled
                 }
@@ -146,10 +139,12 @@ function initSwitchUser() {
     Users.master = false;
 
     Users.setPw = function (user, pwd) {
-        var ps1 = Users.PATH + "setpw.ps1";
-        var cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + ps1 + '" ' + Users.PATH + user + '_pw.txt ' + pwd;
-        var result = Users.shell(cmd);
-        if (!result) {
+        //var ps1 = Users.PATH + "setpw.ps1";
+        var ps1 = Users.PATH + "setpw.exe";
+        //var cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + ps1 + '" ' + Users.PATH + user + '_pw.txt ' + pwd;
+        var cmd = '"' + ps1 + '" ' + Users.PATH + user + '_pw.txt ' + pwd;
+        Users.shell(cmd);
+        if (!FILE.exists('ProfD', '\\user\\' + user + '_pw.txt')) {
             return false;
         }
         Users.pwd[user] = pwd;
@@ -160,26 +155,48 @@ function initSwitchUser() {
         if (Users.pwd[user]) {
             return Users.pwd[user];
         }
-        if ('master' !== user) {
-            return Users.getPw('master');
+
+        var pw_file = Users.PATH + user + "_pw.txt";
+        var theFileInput = utility.newFileInput();
+
+        // Password file does not exist
+        if (!theFileInput.openSpecial(
+            'ProfD',
+            '\\user\\' + user + '_pw.txt',
+            false
+        )) {
+            // For non-master users, fall back to master password
+            if (user !== 'master') {
+                return Users.getPw('master');
+            }
+
+            // Master password does not exist
+            return false;
         }
 
-        var pw = '';
-        var theFileInput = utility.newFileInput();
-        if (!theFileInput.openSpecial('ProfD', '\\user\\' + user + '_pw.txt', false)) {
-            if (!(pw = Users.getPw('master'))) {
-                return false;// handle error if master password cannot be retrieved
-            }
-        } else {
-            var ps1 = Users.PATH + "getpw.ps1";
-            var cmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + ps1 + '" ' + Users.PATH + user + '_pw.txt';
-            pw = Users.shell(cmd);
-        }
+        theFileInput.close();
+
+        // Fast native helper
+        var exe = Users.PATH + "getpw.exe";
+        var cmd = '"' + exe + '" "' + pw_file + '"';
+
+        pw = Users.shell(cmd);
+
         if (pw) {
+            // Remove trailing newline from stdout
+            pw = pw.replace(/[\r\n]+$/, '');
+
             Users.pwd[user] = pw;
             return pw;
         }
-        Notify.popup('Passwort für Benutzer ' + user + ' konnte nicht abgerufen werden.', 'Switch User', 'error-icon', 0);
+
+        Notify.popup(
+            'Passwort für Benutzer ' + user + ' konnte nicht abgerufen werden.',
+            'Switch User',
+            'error',
+            0
+        );
+
         return false;
     }
 
@@ -236,12 +253,11 @@ function initSwitchUser() {
         var format = MISC.format();
         MISC.format('D');
         if ('' != (tagcontent = application.activeWindow.findTagContent('805', 0, false))) {
-            var iln = false;
             var regex = /\$c(\d\d\d\d)/g;
             var array = [];
             regex.lastIndex = 0;
             while ((array = regex.exec(tagcontent)) !== null) {
-                return iln = array[1];
+                return array[1];
             }
         }
         MISC.format(format);
@@ -263,7 +279,9 @@ function initSwitchUser() {
         }
     }
     activeWindow.writeProfileString('switchUser', 'file', tsvFileInput.getPath() + '\\' + Users.FILENAME);
+    var restoreFilePath = getProfileString('csv', 'filepath', '');
     activeWindow.writeProfileString('csv', 'filepath', tsvFileInput.getPath());
+
     tsvFileInput.close();
 
     // initiiere das CSV-Objekt
@@ -308,8 +326,10 @@ function initSwitchUser() {
     }, ["USER_WIN", "USER_WEB", "eln", "iln", "USER_NAME", "PASSWD"], false, false, false, false);
 
     csv.api();
-
-
+    // restore the original csv filepath after processing
+    if (restoreFilePath !== '') {
+        activeWindow.writeProfileString('csv', 'filepath', restoreFilePath);
+    }
     var countProperties = function (obj) {
         var count = 0;
         for (var k in obj) {
@@ -328,7 +348,8 @@ function initSwitchUser() {
         var user_cnt = countProperties(Users.user);
         Notify.info('User-Liste aus Datei ' + Users.FILENAME + ' erstellt\nAnzahl ELN: ' + eln_cnt + '\nAnzahl ILN: ' + iln_cnt + '\nAnzahl User: ' + user_cnt);
     }
-    Notify.info("Master-Passwort wird abgerufen... Der Vorgang kann einige Sekunden dauern.");
+    Notify.info("Passwort wird abgerufen... Der Vorgang kann einige Sekunden dauern.");
+    //activeWindow.messageBox("Passwort wird abgerufen... Der Vorgang kann einige Sekunden dauern.");
     var pw = Users.getPw('master');
     if (!pw) {
         Users.setPw('master', Users.promptPassword('master'));
@@ -367,7 +388,7 @@ function switchUser() {
     } else {
         var iln = Users.getIlnFromTw();
         if (!iln) {
-            Notify.info('Abbruch: Keine ILN im Titel gefunden.');
+            Notify.warning('Abbruch: Keine ILN im Titel gefunden.');
             return false;
         }
         var eln = Users.iln[iln];
@@ -395,7 +416,7 @@ function switchUser() {
 
     var user = Users.promptUsers(users);
     if (!user) {
-        Notify.info('Abbruch: Kein Benutzer ausgewählt.');
+        Notify.warning('Abbruch: Kein Benutzer ausgewählt.');
         return false;
     }
 
@@ -403,7 +424,7 @@ function switchUser() {
     if (!pwd) {
         pwd = Users.promptPassword(user);
         if (!pwd) {
-            Notify.info('Abbruch: Kein Passwort eingegeben für Benutzer ' + user + '.');
+            Notify.warning('Abbruch: Kein Passwort eingegeben für Benutzer ' + user + '.');
             return false;
         }
     }
