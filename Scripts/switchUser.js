@@ -21,21 +21,16 @@ if (typeof Users === 'undefined' || Users === null) {
             if (typeof pwd === 'undefined' || pwd === null) return false;
             url = url || '';
 
-            /*
-            // Problem: Switch to same user in different system
-            // If already logged in as requested user, no-op and return true (popup 0s)
+            // Check if already logged in as requested user
             var cur_uk = activeWindow.getVariable('P3GUK') || '';
-            var cur_sy = activeWindow.getVariable('P3GSY') || '';
             if (cur_uk === user) {
                 Notify.popup(user + ' bereits angemeldet.', 'Switch User', 'message-icon', 0);
                 return true;
-            }*/
+            }
 
             // Temporarily disable command history to avoid logging passwords
             var prevShowHistory = getProfileString('prefs', 'showHistoryCommands', 'true');
-            // Temporarily disable command history to avoid logging passwords
             writeProfileString('prefs', 'showHistoryCommands', 'false');
-            var success = false;
             try {
                 if (url) {
                     activeWindow.processURL(url);
@@ -43,9 +38,7 @@ if (typeof Users === 'undefined' || Users === null) {
                 activeWindow.command('\\LOG ' + user + ' ' + pwd, !!newWindow);
                 if (MISC.checkScreen(['SY'])) {
                     var sys = getProfileString('cbs', 'sys', '');
-                    //WAIT.wait('\\SYS ' + getProfileString('cbs', 'sys', 'ZENTRALKATALOG'), false);
                     if (sys) {
-                        //WAIT.wait('\\sys ' + sys, false);
                         activeWindow.command('\\sys ' + sys, false);
                     }
                 }
@@ -53,24 +46,14 @@ if (typeof Users === 'undefined' || Users === null) {
                     var bes = getProfileString('cbs', 'bes', '');
                     if (bes) {
                         activeWindow.command('\\bes ' + bes, false);
-                        //WAIT.wait('\\bes ' + bes, false);
                     }
                 }
 
-                // After attempting login, poll P3GUK for up to 3s to confirm switch
-                // TODO: Wirkung noch nicht bestätigt
-                var start = new Date().getTime();
-                while (new Date().getTime() - start < 3000) {
-                    if (activeWindow.getVariable('P3GUK') === user) {
-                        success = true;
-                        break;
-                    }
-                }
             } finally {
                 // restore preference
                 writeProfileString('prefs', 'showHistoryCommands', prevShowHistory);
             }
-            return success;
+            return (activeWindow.getVariable('P3GUK') === user) ? true : false;
         },
 
         switchTo: function (user, newWindow, url) {
@@ -254,10 +237,11 @@ function initSwitchUser() {
         MISC.format('D');
         if ('' != (tagcontent = application.activeWindow.findTagContent('805', 0, false))) {
             var regex = /\$c(\d\d\d\d)/g;
-            var array = [];
+            var match;
             regex.lastIndex = 0;
-            while ((array = regex.exec(tagcontent)) !== null) {
-                return array[1];
+            if ((match = regex.exec(tagcontent)) !== null) {
+                MISC.format(format);
+                return match[1];
             }
         }
         MISC.format(format);
@@ -433,7 +417,6 @@ function switchUser() {
         if (idn && MISC.checkScreen(['FI'])) {
             Notify.info('Suche nach ' + idn);
             activeWindow.command('\\ZOE \\PPN ' + idn, false);
-            //WAIT.wait('\\ZOE \\PPN ' + idn, false);
         }
         // indicate success to caller
         return true;
